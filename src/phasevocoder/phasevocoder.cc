@@ -87,7 +87,7 @@ void phasevocoder::init() {
 void phasevocoder::processInData(float *const * inData, int num_in_samples) {
 
     int numres = 0;
-    if (m_mode == NORMAL_SHIFT || m_mode == GENDER_CHANGE || m_mode == FORMANT_PRESERVE || m_mode == ROBOTIC || m_mode == WHISPER) {
+    if (m_mode == NORMAL_STRETCH || m_mode == NORMAL_SHIFT || m_mode == GENDER_CHANGE || m_mode == FORMANT_PRESERVE || m_mode == ROBOTIC || m_mode == WHISPER) {
         ts->processNormal(inData, num_in_samples);
         numres = ts->numsamples_available();
     } else if (m_mode == VOCODER_ROSENBERG) {
@@ -111,7 +111,7 @@ void phasevocoder::getOutData(float *const * outData, int num_out_samples) {
     if (num_out_samples > num_res_) {
         num_out_samples = num_res_;
     }
-    if (m_mode == CONSTANT || m_mode == NORMAL_SHIFT || m_mode == GENDER_CHANGE || m_mode == FORMANT_PRESERVE || m_mode == ROBOTIC || m_mode == WHISPER) {
+    if (m_mode == CONSTANT || m_mode == NORMAL_STRETCH || m_mode == NORMAL_SHIFT || m_mode == GENDER_CHANGE || m_mode == FORMANT_PRESERVE || m_mode == ROBOTIC || m_mode == WHISPER) {
         ts->retrieve(outData, num_out_samples);
     } else if (m_mode == VOCODER_ROSENBERG || m_mode == VOCODER_CHORD) {
         ts->retrieveCarrier(outData, num_out_samples);
