@@ -16,15 +16,17 @@
 #pragma once
 #include <vector>
 #include "modbase.h"
+#include "../src/chromathing/Tuning.h"
+#include "../src/common/dsp/FFT.h"
 
 namespace audiomod {
 
 
-class envelope : public modbase_analyzer {
+class chromatuning : public modbase_meter {
 public:
-    envelope(int sampleRate, int numChannels);
+    chromatuning(int sampleRate, int numChannels, int blockSize, int stepSize);
 
-    ~envelope();
+    ~chromatuning();
 
     /**
      * set mod params
@@ -44,14 +46,14 @@ public:
 
     float getScalarMeasurement() const;
 
-    void processInData (float *const * inData, int num_in_samples);
-
-    void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels);
+    void processBlock (float *const * inData, int num_in_samples);
 
 private:
-    
-    float thisAmp_;
-    std::vector<float> ampVec;
+    float globaltuning;
+    Tuning *T;
+    FFT *fft;
+    float *realOut;
+    float *imagOut;
     
 };
 

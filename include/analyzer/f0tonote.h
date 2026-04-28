@@ -16,15 +16,16 @@
 #pragma once
 #include <vector>
 #include "modbase.h"
+#include "../src/pyin/MonoNote.h"
 
 namespace audiomod {
 
 
-class envelope : public modbase_analyzer {
+class f0tonote : public modbase_analyzer {
 public:
-    envelope(int sampleRate, int numChannels);
+    f0tonote(int sampleRate, int numChannels, int blockSize, int stepSize, float onsetSens = 0.7);
 
-    ~envelope();
+    ~f0tonote();
 
     /**
      * set mod params
@@ -49,9 +50,14 @@ public:
     void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels);
 
 private:
-    
-    float thisAmp_;
-    std::vector<float> ampVec;
+    int numNotes;
+    MonoNote *mn;
+    std::vector<std::vector<float> > pYINNoteSequence; // a sequence of <onset, duration, notes>, in terms of floats
+    int m_inputSampleRate;
+    int m_stepSize;
+    float m_pruneThresh;
+    float m_onsetSensitivity;
+    float m_frameDur;
     
 };
 

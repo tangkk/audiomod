@@ -107,7 +107,7 @@ void phasevocoder::processInData(float *const * inData, int num_in_samples) {
     num_res_ = numres;
 }
 
-void phasevocoder::getOutData(float *const * outData, int num_out_samples) {
+void phasevocoder::getOutData(float *const * outData, int num_out_samples, std::vector<std::string> *labels) {
     if (num_out_samples > num_res_) {
         num_out_samples = num_res_;
     }

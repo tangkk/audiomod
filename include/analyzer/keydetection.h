@@ -16,15 +16,16 @@
 #pragma once
 #include <vector>
 #include "modbase.h"
+#include "../src/chromathing/KeyDetect.h"
 
 namespace audiomod {
 
 
-class envelope : public modbase_analyzer {
+class keydetection : public modbase_analyzer {
 public:
-    envelope(int sampleRate, int numChannels);
+    keydetection(int sampleRate, int numChannels, int blockSize, int stepSize);
 
-    ~envelope();
+    ~keydetection();
 
     /**
      * set mod params
@@ -45,14 +46,14 @@ public:
     float getScalarMeasurement() const;
 
     void processInData (float *const * inData, int num_in_samples);
-
     void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels);
+    
 
 private:
-    
-    float thisAmp_;
-    std::vector<float> ampVec;
-    
+    float globaltuning;
+    KeyDetector *K;
+    float realtime_f;
+    float samplerate_f;
 };
 
 }

@@ -15,16 +15,19 @@
 
 #pragma once
 #include <vector>
+#include <string>
 #include "modbase.h"
+#include "../src/chromathing/Chordino.h" 
+#include "../src/common/dsp/FFT.h"
 
 namespace audiomod {
 
 
-class envelope : public modbase_analyzer {
+class chordestimate : public modbase_analyzer {
 public:
-    envelope(int sampleRate, int numChannels);
+    chordestimate(int sampleRate, int numChannels, int blockSize, int stepSize);
 
-    ~envelope();
+    ~chordestimate();
 
     /**
      * set mod params
@@ -49,10 +52,14 @@ public:
     void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels);
 
 private:
-    
-    float thisAmp_;
-    std::vector<float> ampVec;
-    
+    Chordino* Ch;
+    std::vector<Chordino::Feature> ChordSequence; // a sequence of <onset, chords>, in terms of floats
+    std::vector<Chordino::Feature> ChordNoteSequence;
+    FFT *fft;
+    float *realOut;
+    float *imagOut;
+    float realtime_f;
+    float samplerate_f;
 };
 
 }

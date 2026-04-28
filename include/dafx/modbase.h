@@ -18,6 +18,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 
 /**
@@ -94,7 +95,7 @@ public:
      * @param num_out_samples total number of available samples per channel to retreive, if
      *                this is larger than what is available, outData only got what is available
      */
-    virtual void getOutData(float *const * outData, int num_out_samples) = 0;
+    virtual void getOutData(float *const * outData, int num_out_samples, std::vector<std::string> *labels=nullptr) = 0;
 
     /**
      * set mod params
@@ -153,7 +154,7 @@ public:
      * @param num_out_samples total number of available symbols per channel to retreive, if
      *                this is larger than what is available, outData only got what is available
      */
-    virtual void getOutData(float *const * outData, int num_out_symbols) = 0;
+    virtual void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels=nullptr) = 0;
 
     /**
      * set mod params

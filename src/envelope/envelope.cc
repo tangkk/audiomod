@@ -49,7 +49,7 @@ void envelope::processInData (float *const * inData, int num_in_samples) {
     ampVec.push_back(thisAmp_);
 }
 
-void envelope::getOutData(float *const * outData, int num_out_symbols) {
+void envelope::getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels) {
     // do nothing here for the moment
     outData[0][0] = thisAmp_;
 }

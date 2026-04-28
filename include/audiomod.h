@@ -49,4 +49,10 @@
 // #if defined(__APPLE__) or defined(__LINUX__)
 // #include "analyzer/vad.h"
 #include "analyzer/envelope.h"
+#include "analyzer/pyin.h"
+#include "analyzer/chromatuning.h"
+#include "analyzer/keydetection.h"
+#include "analyzer/chordestimate.h"
+
+#include "analyzer/f0tonote.h"
 // #endif

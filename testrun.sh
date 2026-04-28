@@ -1,0 +1,1 @@
+./audiomix-exe ../testcase/verse_melody.wav ../testcase/verse_harmony.wav ../testcase/verse_bass.wav ../testcase/verse_drum.wav 

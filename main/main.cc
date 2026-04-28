@@ -76,6 +76,12 @@ int main (int argc, char* argv[]) {
             // "vad, "
             // "makeupgain, "
             "envelope, "
+            "pyin, "
+            "chromatuning, "
+            "hummingest, "
+            "keydetection, "
+            "chordestimate, "
+            "f0tonote,"
             ")" << std::endl;
         return -1;
     }
@@ -92,45 +98,54 @@ int main (int argc, char* argv[]) {
     std::string input_file_name(argv[2]);
     std::string output_file_name(argv[3]);
 
-    if (!exists_test(input_file_name) && input_file_name != "-") {
+    if (!exists_test(input_file_name) && input_file_name[0] != '-') {
         std::cerr << "input_file doesn't exist" << std::endl;
         return -1;
     }
     
     //create input stream and reader
     WavInFile *input = nullptr;
-    
-    if (input_file_name != "-") {
-        input = new WavInFile(input_file_name.c_str());
-    } else {
-        FILE *fp = std::freopen(nullptr, "rb", stdin);
+    std::ifstream txtinput;
+    if (input_file_name[0] == '-') {
+        // pipe input
+        std::freopen(nullptr, "rb", stdin);
 
         if (std::ferror(stdin))
             throw std::runtime_error(std::strerror(errno));
 
         std::cerr << "reading from stdin..." << std::endl;
-
         input = new WavInFile(stdin);
+    } else {
+        // local file input
+        if (model_name == "f0tonote") {
+            txtinput.open(input_file_name);
+        } else {
+            input = new WavInFile(input_file_name.c_str());
+        }
     }
 
-    int wav_format = input->getWavFormat();
+    int wav_format = input == nullptr ? 0 : input->getWavFormat();
     std::cerr << "wav_format = " << wav_format << std::endl;
 
-    int bytes_per_sample = input->getBytesPerSample();
+    int bytes_per_sample = input == nullptr ? 0 : input->getBytesPerSample();
     std::cerr << "bytes_per_sample = " << bytes_per_sample << std::endl;
 
-    int data_len_in_bytes = input->getDataSizeInBytes();
-    std::cerr << "data_len_in_bytes = " << data_len_in_bytes << std::endl;
+    // int data_len_in_bytes = input->getDataSizeInBytes();
+    // std::cerr << "data_len_in_bytes = " << data_len_in_bytes << std::endl;
     
     // num_channels = reader->numChannels;
-    int num_channels = input->getNumChannels();
+    int num_channels = input == nullptr ? 1 : input->getNumChannels();
     std::cerr << "num_channels = " << num_channels << std::endl;
 
     // sample_rate = reader->sampleRate;
-    int sample_rate = input->getSampleRate();
+    int sample_rate = input == nullptr ? 44100 : input->getSampleRate();
     std::cerr << "sample_rate = " <<  sample_rate << std::endl;
 
-    int file_length = input->getNumSamples();
+    int file_length = input == nullptr ? 0 : input->getNumSamples();
+    if (input_file_name[0] == '-') { // assign file_length from outside (may be different from the actual length)
+        float file_dur = atof(&input_file_name[2]);
+        file_length = file_dur * sample_rate;
+    }
     std::cerr << "file_length = " << file_length << std::endl;
 
     int output_bits_per_sample = 16;
@@ -139,7 +154,10 @@ int main (int argc, char* argv[]) {
 
     WavOutFile *output = nullptr;
     std::ofstream txtoutput;
-    if (model_name == "loudnessmeter" || model_name == "envelope") {
+    if (model_name == "loudnessmeter" || model_name == "envelope" || model_name == "pyin" || model_name == "f0tonote"
+        || model_name == "chromatuning" || model_name == "hummingest" 
+        || model_name == "keydetection" || model_name == "chordestimate"
+    ) {
         // txtoutput.open(output_file_name);
         // use std::cout as output
     } else {
@@ -147,19 +165,7 @@ int main (int argc, char* argv[]) {
     }
 
     int block_size = sample_rate / 100 < 480 ? 480 : sample_rate / 100;
-    std::cerr << "block_size = " << block_size << std::endl;
-
-    float** buff;
-    buff = new float* [num_channels];
-    for (int i=0; i<num_channels; i++) {
-        buff[i] = new float[block_size];
-    }
-
-    float** outbuff;
-    outbuff = new float* [num_channels];
-    for (int i=0; i<num_channels; i++) {
-        outbuff[i] = new float[block_size * 4];
-    }
+    int extra_meta_param = 0; // extra parameter whenever necessary
 
     
     modbase * m_modbase = nullptr;
@@ -192,6 +198,13 @@ int main (int argc, char* argv[]) {
     std::unique_ptr<gain> m_gain;
 
     std::unique_ptr<envelope> m_envelope;
+
+    std::unique_ptr<pyin> m_pyin;
+    std::unique_ptr<pyin> m_pyin_2;
+    std::unique_ptr<chromatuning> m_chromatuning;
+    std::unique_ptr<keydetection> m_keydetection;
+    std::unique_ptr<chordestimate> m_chordestimate;
+    std::unique_ptr<f0tonote> m_f0tonote;
     
     if (model_name == "constant") {
         if (argc < 4) {
@@ -374,6 +387,7 @@ int main (int argc, char* argv[]) {
             std::cerr<<"err: not enough para ()"<<std::endl;
             return -1;
         }
+        txtoutput.open(output_file_name);
         m_loudnessmeter = std::unique_ptr<loudnessmeter>(new loudnessmeter(sample_rate, num_channels, block_size));
         m_modbase_meter = m_loudnessmeter.get();
     }
@@ -385,6 +399,125 @@ int main (int argc, char* argv[]) {
         txtoutput.open(output_file_name);
         m_envelope = std::unique_ptr<envelope>(new envelope(sample_rate, num_channels));
         m_modbase_analyzer = m_envelope.get();
+    }
+    else if (model_name == "pyin") {
+        if (argc < 7) {
+            std::cerr<<"err: not enough para (blocksize, stepsize, onsetsens)"<<std::endl;
+            return -1;
+        }
+        int blockSize = atoi(argv[4]);
+        int stepSize = atoi(argv[5]);
+        float pyinOnsetSens = atof(argv[6]);
+        txtoutput.open(output_file_name);
+        m_pyin = std::unique_ptr<pyin>(new pyin(sample_rate, num_channels, blockSize, stepSize, pyinOnsetSens));
+        m_modbase_analyzer = m_pyin.get();
+    }
+    else if (model_name == "f0tonote") {
+        if (argc < 7) {
+            std::cerr<<"err: not enough para (sample_rate, stepsize, onsetsens)"<<std::endl;
+            return -1;
+        }
+        int sample_rate = atoi(argv[4]);
+        int stepSize = atoi(argv[5]);
+        float pyinOnsetSens = atof(argv[6]);
+        txtoutput.open(output_file_name);
+        m_f0tonote = std::unique_ptr<f0tonote>(new f0tonote(sample_rate, 0, 0, stepSize, pyinOnsetSens));
+        m_modbase_analyzer = m_f0tonote.get();
+    }
+    else if (model_name == "chromatuning") {
+        if (argc < 7) {
+            std::cerr<<"err: not enough para (blocksize, stepsize, durneeded)"<<std::endl;
+            return -1;
+        }
+        // prefered params 8192, 8192
+        int blockSize = atoi(argv[4]); 
+        int stepSize = atoi(argv[5]);
+        extra_meta_param = atoi(argv[6]);
+        txtoutput.open(output_file_name);
+        m_chromatuning = std::unique_ptr<chromatuning>(new chromatuning(sample_rate, num_channels, blockSize, stepSize));
+        m_modbase_meter = m_chromatuning.get();
+        block_size = blockSize;
+    }
+    else if (model_name == "keydetection") {
+        if (argc < 7) {
+            std::cerr<<"err: not enough para (blocksize, stepsize, durneeded)"<<std::endl;
+            return -1;
+        }
+        // prefered params 8192, 8192
+        int blockSize = atoi(argv[4]); 
+        int stepSize = atoi(argv[5]);
+        extra_meta_param = atoi(argv[6]);
+        txtoutput.open(output_file_name);
+        m_keydetection = std::unique_ptr<keydetection>(new keydetection(sample_rate, num_channels, blockSize, stepSize));
+        m_modbase_analyzer = m_keydetection.get();
+        block_size = blockSize;
+    }
+    else if (model_name == "chordestimate") {
+        if (argc < 6) {
+            std::cerr<<"err: not enough para (blocksize, stepsize)"<<std::endl;
+            return -1;
+        }
+        // prefered params 8192, 8192
+        int blockSize = atoi(argv[4]); 
+        int stepSize = atoi(argv[5]);
+        txtoutput.open(output_file_name);
+        m_chordestimate = std::unique_ptr<chordestimate>(new chordestimate(sample_rate, num_channels, blockSize, stepSize));
+        m_modbase_analyzer = m_chordestimate.get();
+        block_size = blockSize;
+    }
+    else if (model_name == "hummingest") {
+        if (argc < 9) {
+            std::cerr<<"err: not enough para (blocksizes, stepsizes, onsetsenses, blocksize, stepsize, extrametap)"<<std::endl;
+            return -1;
+        }
+
+        char* token = std::strtok(argv[4], ",");
+        int pyinBlockSizes[2];
+        int i = 0;
+        while (token != nullptr && i < 2) {
+            pyinBlockSizes[i++] = std::atoi(token);
+            token = std::strtok(nullptr, ",");
+        }
+
+        token = std::strtok(argv[5], ",");
+        int pyinStepSizes[2];
+        i = 0;
+        while (token != nullptr && i < 2) {
+            pyinStepSizes[i++] = std::atoi(token);
+            token = std::strtok(nullptr, ",");
+        }
+
+        token = std::strtok(argv[6], ",");
+        float pyinOnsetSenses[2];
+        i = 0;
+        while (token != nullptr && i < 2) {
+            pyinOnsetSenses[i++] = std::atof(token);
+            token = std::strtok(nullptr, ",");
+        }
+
+        // int pyinBlockSize = atoi(argv[4]); 
+        // int pyinStepSize = atoi(argv[5]);
+        // float pyinOnsetSens = atof(argv[6]);
+
+        // two different configurations
+        m_pyin = std::unique_ptr<pyin>(new pyin(sample_rate, num_channels, pyinBlockSizes[0], pyinStepSizes[0], pyinOnsetSenses[0]));
+        m_pyin_2 = std::unique_ptr<pyin>(new pyin(sample_rate, num_channels, pyinBlockSizes[1], pyinStepSizes[1], pyinOnsetSenses[1]));
+        // m_modbase_analyzer = m_pyin.get();
+
+        int tuningBlockSize = atoi(argv[7]); 
+        int tuningStepSize = atoi(argv[8]);
+        m_chromatuning = std::unique_ptr<chromatuning>(new chromatuning(sample_rate, num_channels, tuningBlockSize, tuningStepSize));
+        block_size = tuningBlockSize; // use this as the system block size
+        // m_modbase_meter = m_chromatuning.get();
+
+        extra_meta_param = atoi(argv[9]); // for pyin1 and pyin2 selection
+
+        txtoutput.open(output_file_name); // file for output
+
+        // autogain modules
+        m_loudnessmeter = std::unique_ptr<loudnessmeter>(new loudnessmeter(sample_rate, num_channels, block_size));
+        m_limiter = std::unique_ptr<limiter>(new limiter(sample_rate, num_channels));
+
     }
     else if (model_name == "equalizer") {
         float *paramlist = nullptr;
@@ -467,6 +600,22 @@ int main (int argc, char* argv[]) {
         return -1;
     }
 
+
+    // allocate buffers
+    std::cerr << "block_size = " << block_size << std::endl;
+
+    float** buff;
+    buff = new float* [num_channels];
+    for (int i=0; i<num_channels; i++) {
+        buff[i] = new float[block_size];
+    }
+
+    float** outbuff;
+    outbuff = new float* [num_channels];
+    for (int i=0; i<num_channels; i++) {
+        outbuff[i] = new float[block_size * 4];
+    }
+
     // printf("ready to process...\n");
     if (model_name == "time_stretch") {
         for (int i = 0; i < file_length; i+=block_size) {
@@ -514,7 +663,7 @@ int main (int argc, char* argv[]) {
             m_modbase_meter->processBlock(buff, num_samples);
         }
         // printf("loudness(dB):%f\n", m_modbase_meter->getScalarMeasurement());
-        // txtoutput << m_modbase_meter->getScalarMeasurement() << std::endl;
+        txtoutput << m_modbase_meter->getScalarMeasurement() << std::endl;
         float dbloudness = m_modbase_meter->getScalarMeasurement();
         std::cerr << "dbloudness(LUFS):" << dbloudness << std::endl;
 
@@ -535,6 +684,283 @@ int main (int argc, char* argv[]) {
         }
         float envelope_mean = m_modbase_analyzer->getScalarMeasurement();
         std::cerr << "envelope_mean:" << envelope_mean << std::endl;
+    }
+    else if (model_name == "pyin") { // fully offline analyzing, real the whole file and process
+        // init a buff of file length
+        float** fullLengthbuff;
+        fullLengthbuff = new float* [num_channels];
+        for (int i=0; i<num_channels; i++) {
+            fullLengthbuff[i] = new float[file_length];
+        }
+
+        int num_samples = input->read(fullLengthbuff, file_length);
+        m_modbase_analyzer->processInData(fullLengthbuff, num_samples);
+
+        for (int i=0; i<num_channels; i++) {
+            delete[] fullLengthbuff[i];
+        }
+        delete[] fullLengthbuff;
+
+        int numNotes = m_modbase_analyzer->getScalarMeasurement();
+        
+        if (numNotes < block_size * 4) {
+            m_modbase_analyzer->getOutData(outbuff, numNotes);
+            for (int i=0; i<numNotes*3; i+=3) {
+                float st = outbuff[0][i];
+                float dur = outbuff[0][i+1];
+                float f0 = outbuff[0][i+2];
+                if (txtoutput.is_open()) {
+                    // std::cerr << "txtoutput is opened" << std::endl;
+                    txtoutput << st << "," << dur << "," << f0 << std::endl;
+                } else {
+                    std::cerr << "txtoutput not opened" << std::endl;
+                }
+                
+            }
+        } else {
+            std::cerr << "numNotes > block_size * 4, this is strange!" << std::endl;
+        }
+
+    }
+    else if (model_name == "f0tonote") {
+        std::vector<float> f0vec;
+        std::vector<float> rmsvec;
+        if (txtinput.is_open()) {
+            std::string line;
+            while (std::getline(txtinput, line)) {
+                // Output the line
+                // std::cerr << line << std::endl;
+                std::stringstream ss(line);
+
+                std::string temp;
+                std::getline(ss, temp, ',');
+                float rms = std::stof(temp);
+                
+                std::getline(ss, temp, ',');
+                float f0 = std::stof(temp);
+                
+                rmsvec.push_back(rms);
+                f0vec.push_back(f0);
+                // std::cerr << "Extracted value: " << value << std::endl;
+            }
+        }
+        // std::cerr << "txtinput done..." << std::endl;
+
+        float* data[2];
+        data[0] = f0vec.data();
+        data[1] = rmsvec.data();
+        m_modbase_analyzer->processInData(data, f0vec.size());
+        // std::cerr << "processInData done..." << std::endl;
+        int numNotes = m_modbase_analyzer->getScalarMeasurement();
+        if (numNotes > 0) {
+            m_modbase_analyzer->getOutData(outbuff, numNotes);
+            // std::cerr << "getOutData done..." << std::endl;
+            for (int i=0; i<numNotes*3; i+=3) {
+                float st = outbuff[0][i];
+                float dur = outbuff[0][i+1];
+                float pitch = outbuff[0][i+2];
+                if (txtoutput.is_open()) {
+                    // std::cerr << "txtoutput is opened" << std::endl;
+                    txtoutput << st << "," << dur << "," << pitch << std::endl;
+                } else {
+                    std::cerr << "txtoutput not opened" << std::endl;
+                }
+                
+            }
+        } else {
+            std::cerr << "numNotes == 0, this is strange!" << std::endl;
+        }
+
+    }
+    else if (model_name == "chromatuning") {
+        int targetLen = extra_meta_param == -1 ? file_length : extra_meta_param * sample_rate;
+        for (int i = 0; i < targetLen; i+=block_size) {
+            int num_samples = input->read(buff, block_size);
+            if (num_samples < block_size) {
+                // pad remaining buf with zeros
+                for (int j=0; j<num_channels; j++) {
+                    for (int k=num_samples; k<block_size; k++) {
+                        buff[j][k] = 0;
+                    }
+                }
+            }
+            m_modbase_meter->processBlock(buff, num_samples);
+        }
+        float globaltuning = m_modbase_meter->getScalarMeasurement();
+        txtoutput << 0 << "," << 0 << "," << globaltuning << std::endl;
+    }
+    else if (model_name == "keydetection") {
+        int targetLen = extra_meta_param == -1 ? file_length : extra_meta_param * sample_rate;
+        for (int i = 0; i < targetLen; i+=block_size) {
+            int num_samples = input->read(buff, block_size);
+            if (num_samples < block_size) {
+                // pad remaining buf with zeros
+                for (int j=0; j<num_channels; j++) {
+                    for (int k=num_samples; k<block_size; k++) {
+                        buff[j][k] = 0;
+                    }
+                }
+            }
+            m_modbase_analyzer->processInData(buff, num_samples);
+        }
+        std::vector<std::string> labels;
+        m_modbase_analyzer->getOutData(outbuff, 0, &labels);
+
+        int num_keys = m_modbase_analyzer->getScalarMeasurement();
+        std::cerr << "num_keys:" << num_keys << std::endl;
+        for (int i=0; i<num_keys + 1; i++) { // there's an end label at the end
+            txtoutput << labels[4*i] << "," << labels[4*i + 1] << "," << labels[4*i + 2] << "," << labels[4*i + 3] << std::endl;
+        }
+        // txtoutput << float(file_length) / sample_rate << "," << -1 << std::endl;
+        // txtoutput << "------" << std::endl;
+        // for (int i=0; i<24; i++) {
+        //     txtoutput << outbuff[0][i] << std::endl;
+        // }
+    }
+    else if (model_name == "chordestimate") {
+        int targetLen = file_length;
+        for (int i = 0; i < targetLen; i+=block_size) {
+            int num_samples = input->read(buff, block_size);
+            if (num_samples < block_size) {
+                // pad remaining buf with zeros
+                for (int j=0; j<num_channels; j++) {
+                    for (int k=num_samples; k<block_size; k++) {
+                        buff[j][k] = 0;
+                    }
+                }
+            }
+            m_modbase_analyzer->processInData(buff, num_samples);
+        }
+        // printf("processInData done.\n");
+        std::vector<std::string> labels;
+        m_modbase_analyzer->getOutData(outbuff, 0, &labels);
+
+        int num_chords = m_modbase_analyzer->getScalarMeasurement();
+        std::cerr << "num_chords:" << num_chords << std::endl;
+        for (int i=0; i<num_chords; i++) {
+            txtoutput << labels[2*i] << "," << labels[2*i + 1] << std::endl;
+        }
+        txtoutput << "------" << std::endl;
+        int num_chord_notes = int(outbuff[0][0]);
+        int j=0;
+        for (int i=0; i<num_chord_notes; i++) {
+            txtoutput << outbuff[0][j+1] << "," << outbuff[0][j+2] << "," << outbuff[0][j+3] << std::endl;
+            j+=3;
+        }
+    }
+    else if (model_name == "hummingest") {
+        float** fullLengthbuff;
+        fullLengthbuff = new float* [num_channels];
+        for (int i=0; i<num_channels; i++) {
+            fullLengthbuff[i] = new float[file_length];
+        }
+
+        // read the whole file
+        int num_samples = input->read(fullLengthbuff, file_length);
+
+        // process loudness, and process tuning
+        for (int i = 0; i < file_length; i+=block_size) {
+            int num_samples = std::min(block_size, file_length-i);
+
+            // copy to buff
+            for (int c = 0; c < num_channels; c++) {
+                int bytesToCopy = num_samples * sizeof(float);
+                memcpy(buff[c], &fullLengthbuff[c][i], bytesToCopy);
+            }
+            if (num_samples < block_size) {
+                // pad remaining buf with zeros
+                for (int j=0; j<num_channels; j++) {
+                    for (int k=num_samples; k<block_size; k++) {
+                        buff[j][k] = 0;
+                    }
+                }
+            }
+            m_chromatuning->processBlock(buff, num_samples);
+            m_loudnessmeter->processBlock(buff, num_samples); // process loudness meter too
+        }
+
+        // autogain adjustment
+        float dbloudness = m_loudnessmeter->getScalarMeasurement();
+        std::cerr << "dbloudness:" << dbloudness << std::endl;
+        float target_LUFS = -20;
+        float dbMakeUp = target_LUFS - dbloudness;
+        std::cerr << "dbMakeUp:" << dbMakeUp << std::endl;
+
+        if (dbMakeUp > 6) {
+            m_limiter->setThreshold(-1);
+            m_limiter->setMakeUpGain(dbMakeUp);
+            for (int i = 0; i < file_length; i+=block_size) {
+                int num_samples = std::min(block_size, file_length-i);
+
+                // copy to buff
+                for (int c = 0; c < num_channels; c++) {
+                    int bytesToCopy = num_samples * sizeof(float);
+                    memcpy(buff[c], &fullLengthbuff[c][i], bytesToCopy);
+                }
+                if (num_samples < block_size) {
+                    // pad remaining buf with zeros
+                    for (int j=0; j<num_channels; j++) {
+                        for (int k=num_samples; k<block_size; k++) {
+                            buff[j][k] = 0;
+                        }
+                    }
+                }
+                m_limiter->processBlock(buff, num_samples);
+                // copy back to original array
+                for (int c = 0; c < num_channels; c++) {
+                    int bytesToCopy = num_samples * sizeof(float);
+                    memcpy(&fullLengthbuff[c][i], buff[c], bytesToCopy);
+                }
+            }
+        }
+
+        // process pYIN
+        m_pyin->processInData(fullLengthbuff, num_samples);
+        m_pyin_2->processInData(fullLengthbuff, num_samples);
+
+        // write tuning results first
+        float globaltuning = m_chromatuning->getScalarMeasurement();
+        
+        // then pyin results
+        int numNotes = m_pyin->getScalarMeasurement();
+        int numNotes_2 = m_pyin_2->getScalarMeasurement();
+        int pYIN_selection = 0;
+        std::cerr << "numNotes:" << numNotes << ", numNotes_2:" << numNotes_2 << std::endl;
+        if (numNotes >= numNotes_2 - extra_meta_param) { // take the one that outputs more notes, and prefer pyin_1 always
+            m_modbase_analyzer = m_pyin.get();
+            pYIN_selection = 1;
+            std::cerr << "use pYIN **********:" << std::endl;
+        } else {
+            m_modbase_analyzer = m_pyin_2.get();
+            pYIN_selection = 2;
+            numNotes = numNotes_2;
+            std::cerr << "use pYIN 2 **********:" << std::endl;
+        }
+
+        txtoutput << 0 << "," << 0 << "," << globaltuning << "," << pYIN_selection << "," << dbMakeUp << std::endl;
+
+        if (numNotes < block_size * 4) {
+            m_modbase_analyzer->getOutData(outbuff, numNotes);
+            for (int i=0; i<numNotes*3; i+=3) {
+                float st = outbuff[0][i];
+                float dur = outbuff[0][i+1];
+                float f0 = outbuff[0][i+2];
+                if (txtoutput.is_open()) {
+                    // std::cerr << "txtoutput is opened" << std::endl;
+                    txtoutput << st << "," << dur << "," << f0 << std::endl;
+                } else {
+                    std::cerr << "txtoutput not opened" << std::endl;
+                }
+                
+            }
+        } else {
+            std::cerr << "numNotes > block_size * 4, this is strange!" << std::endl;
+        }
+
+        for (int i=0; i<num_channels; i++) {
+            delete[] fullLengthbuff[i];
+        }
+        delete[] fullLengthbuff;
     }
     else if (model_name == "autogain") {
         for (int i = 0; i < file_length; i+=block_size) {
@@ -585,7 +1011,10 @@ int main (int argc, char* argv[]) {
     buff = nullptr;
     outbuff = nullptr;
 
-    delete input;
+    if (input != nullptr) {
+        delete input;
+        input = nullptr;
+    }
 
     if (output != nullptr) {
         delete output;
@@ -597,11 +1026,17 @@ int main (int argc, char* argv[]) {
     }
 
     if (txtoutput.is_open()) {
+        // txtoutput.flush();
         txtoutput.close();
+        // std::cerr << "txtoutput.close()..." << std::endl;
+    }
+
+    if (txtinput.is_open()) {
+        txtinput.close();
     }
 
     // printf("done...\n");
-    // std::cerr << "done..." << std::endl;
+    std::cerr << "done..." << std::endl;
     
     return 0;
 }

@@ -75,7 +75,7 @@ public:
   
   void processInData (float *const * inData, int num_in_samples); // for non-real-time process
 
-  void getOutData(float *const * outData, int num_out_samples);
+  void getOutData(float *const * outData, int num_out_samples, std::vector<std::string> *labels);
 
   bool outputReady() {return outready_;}
 

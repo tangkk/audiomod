@@ -1,6 +1,5 @@
+cmake_minimum_required(VERSION 3.5.1)
 project(audiomod)
-cmake_minimum_required(VERSION 3.4.1)
-
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake; ${CMAKE_MODULE_PATH};")
@@ -15,6 +14,12 @@ elseif(APPLE) # iOS or MAC
 else()
 
 endif()
+
+file(GLOB audiomix_TEST
+    "main/audiomix.cc"
+    "main/wavfile.cc"
+    "main/wavfile.h"
+)
 
 file(GLOB audiomod_TEST
     "main/main.cc"
@@ -50,18 +55,27 @@ file(GLOB AE_SOURCES
     "src/common/base/*.cc"
     "src/common/filters/*.cc"
     "src/common/utils/*.c"
+    "src/common/realtime/*.cc"
+    "src/common/*.cc"
+    "src/common/*.c"
 
+
+    # analyzer sources
     "src/envelope/*.cc"
-
+    "src/pyin/*.cc"
+    "src/chromathing/*.cc"
+    "src/chromathing/*.c"
     )
 
 file(GLOB AE_HEADERS
     "include/*.h"
     "include/dafx/*.h"
     "include/analyzer/*.h"
+    "include/common/*.h"
 )
 
-
+find_package(Boost REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
 
 add_library(audiomod STATIC ${AE_SOURCES})
 SET_TARGET_PROPERTIES(audiomod PROPERTIES
@@ -103,20 +117,24 @@ else(BUILD_LIBS)
     add_executable(audiomod-exe ${audiomod_TEST})
     target_link_libraries(audiomod-exe audiomod)
 
+    add_executable(audiomix-exe ${audiomix_TEST})
+    target_link_libraries(audiomix-exe audiomod)
+
     if(ANDROID OR LINUX)
-        set_property(TARGET audiomod-exe audiomod audiomodshared PROPERTY CXX_STANDARD 14)
+        set_property(TARGET audiomod-exe audiomix-exe audiomod audiomodshared PROPERTY CXX_STANDARD 14)
     else()
-        set_property(TARGET audiomod-exe audiomod PROPERTY CXX_STANDARD 14)
+        set_property(TARGET audiomod-exe audiomix-exe audiomod PROPERTY CXX_STANDARD 14)
     endif()
     
     if(APPLE)
         # set(CMAKE_EXE_LINKER_FLAGS "-libc++")
-        install (TARGETS audiomod-exe DESTINATION bin)
+        install (TARGETS audiomod-exe audiomix-exe DESTINATION bin)
 
     else(APPLE)
         # for static linkage you need to have static gcc installed, do
         # yum install glibc-static libstdc++-static
         set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgcc -static-libstdc++")
+        install (TARGETS audiomod-exe audiomix-exe DESTINATION bin)
     endif(APPLE)
 endif(BUILD_LIBS)
 

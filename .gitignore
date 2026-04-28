@@ -18,3 +18,4 @@ out/
 *.tar.gz
 audiomodtest.app
 JuceLibraryCode/
+exe-static/

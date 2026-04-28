@@ -51,6 +51,7 @@
 #include <cstring>
 #include <assert.h>
 #include <limits.h>
+#include <iostream>
 
 #include "wavfile.h"
 #include <math.h>
@@ -869,7 +870,7 @@ int WavInFile::readHeaderBlock()
     string sLabel;
 
     // lead label string
-    if (fread(label, 1, 4, fptr) != 4) {
+    if (fread(label, 1, 4, fptr) != 4) { // read 4 bytes
         // printf("not enough head data\n");
         return -1;
     }
@@ -1011,7 +1012,10 @@ int WavInFile::readWavHeaders()
     {
         // read header blocks
         res = readHeaderBlock();
-        if (res < 0) return 1;  // error in file structure
+        if (res < 0) {
+            std::cerr << "error in file structure" << std::endl;
+            return 1;  // error in file structure
+        }
     } while (res == 0);
     // check that all required tags are legal
     return checkCharTags();

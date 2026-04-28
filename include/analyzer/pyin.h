@@ -16,15 +16,16 @@
 #pragma once
 #include <vector>
 #include "modbase.h"
+#include "../src/pyin/pYINAnalyzer.h" // FIXME: we should use pYINAnalyzer.h as pyin.h directly
 
 namespace audiomod {
 
 
-class envelope : public modbase_analyzer {
+class pyin : public modbase_analyzer {
 public:
-    envelope(int sampleRate, int numChannels);
+    pyin(int sampleRate, int numChannels, int blockSize, int stepSize, float onsetSens = 0.7);
 
-    ~envelope();
+    ~pyin();
 
     /**
      * set mod params
@@ -49,9 +50,9 @@ public:
     void getOutData(float *const * outData, int num_out_symbols, std::vector<std::string> *labels);
 
 private:
-    
-    float thisAmp_;
-    std::vector<float> ampVec;
+    int numNotes;
+    pYINAnalyzer* pYA;
+    std::vector<std::vector<float> > pYINNoteSequence; // a sequence of <onset, duration, notes>, in terms of floats
     
 };
 
